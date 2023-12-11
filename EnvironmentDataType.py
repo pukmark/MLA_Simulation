@@ -11,7 +11,7 @@ class EnvironmentType:
 
 class EnvParamsType:
     def __init__(self):
-        self.Temperature = 298.0 # Kelvin
+        self.Temperature = 285.0 # Kelvin
         self.Pressure = 101325.0 # Pa
         self.Density = 1.225 # kg/m^3
         self.Gravity = 9.81 # m/s^2
@@ -23,7 +23,8 @@ class EnvParamsType:
         self.TempSigma = 5.0 # Kelvin
 
     def Initialize(self):
-        self.Temperature = self.Temperature * np.random.randn(1)*self.TempSigma
+        self.Temperature = self.Temperature + np.random.randn(1)*self.TempSigma
+        #self.Temperature = self.Temperature
 
     def Update(self, Time):
         self.Temperature = self.Temperature
