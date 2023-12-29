@@ -94,11 +94,11 @@ def ForwardReachSet(x0, A, B, X, U, Kmax):
     
     
     C[0] = X0
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
-    C[0].project([1,2]).plot(ax)
-    ax.autoscale_view()
-    plt.show()
+    # fig = plt.figure()
+    # ax = fig.add_subplot(1, 1, 1)
+    # C[0].project([1,2]).plot(ax)
+    # ax.autoscale_view()
+    # plt.show()
     
     for j in range(1, Kmax):
         print(Kmax-j)

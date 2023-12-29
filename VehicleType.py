@@ -126,6 +126,7 @@ class VehicleType():
                 
                 if self.ReachabilityFlag == True:
                     # do the forward reachability analysis to determine in what kind of (T, SOC) we could have reached the upcoming node
+                    print('Performing reachability analysis')
                     xN = [self.DM.Pi0[1][0][-1], self.DM.Pi0[1][1][-1]]
                     df = np.sqrt((self.State.Pos[0] - xN[0])**2 + (self.State.Pos[1] - xN[1])**2)
                     vf = 0.0
@@ -140,7 +141,6 @@ class VehicleType():
                     T_possible = []
                     soc_bounds = []
                     for i in range(1,len(set_list)):
-                        print(i)
                         consider_set = set_list[i]
                         eps = 0.001
                         Xf = pt.Polytope(np.array([[1.0, 0, 0],
@@ -157,7 +157,7 @@ class VehicleType():
                                                   [0.0]]))
                         C = consider_set.intersect(Xf)
                         if C.volume > 0.0:
-                            print('Adding set ' + str(i))
+                            # print('Adding set ' + str(i))
                             T_possible.append((Time - self.DM.NodeStartTime) + i*dT)
                             f = C.project([3]).b
                             energy_costs = np.array([100 - f[0], 100 + f[1]])

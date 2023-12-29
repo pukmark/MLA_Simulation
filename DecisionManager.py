@@ -194,9 +194,6 @@ class DM():
                     a.append(pyo.value(model.a[t+1]))
                     w.append(pyo.value(model.w[t+1]))
             
-            
-            plt.plot(x,y,'r')
-            plt.scatter(goal_loc[0], goal_loc[1])
         
             # calculate distance
             dist = np.sqrt((goal_loc[0] - x)**2 + (goal_loc[1] - y)**2)
