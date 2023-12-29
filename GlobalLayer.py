@@ -15,7 +15,7 @@ class GlobalLayer:
         for i in range(self.NVeciles):
             self.EstimatedState.append(copy.copy(VT.VehicleEstState(i, CarsInDepots[i], InitialSOC[i])))
             self.Plan.append(copy.copy(DT.Plan(EstimatedMap.N)))
-        self.MaxCalcTimeFromUpdate = 20.0 # what does this mean?
+        self.MaxCalcTimeFromUpdate = 20.0 
         
         self.MaxCloudMapPts = 1000
         self.CloudMap = np.zeros((EstimatedMap.N, EstimatedMap.N, self.MaxCloudMapPts, 3))
@@ -72,10 +72,7 @@ class GlobalLayer:
                 
             
 
-
-    def GlobalPlannerInitialize(self, EstimatedMap: DT.MapType, ClusteringMethod: str):
-        # NOTE: TIME COSTS ARE POSITIVE, ENERGY COSTS ARE NEGATIVE
-        # MAKE SURE WE MAINTAIN THIS
+    def GlobalPlannerInitialize(self, EstimatedMap: DT.MapType, ClusteringMethod: str):        
         
         # Divide the nodes to groups (Clustering), depending on estimated map:
         NodesGroups = DivideNodesToGroups(EstimatedMap, ClusteringMethod)
@@ -105,10 +102,7 @@ class GlobalLayer:
                 if EstimatedMap.CS.Nodes[j] in NodesGroups[i]:
                     CS_nodes.append(np.argwhere(NodesGroups[i] == EstimatedMap.CS.Nodes[j]).tolist()[0][0])
             CS = DT.ChargingStationsType(CS_nodes, EstimatedMap.CS.ChargingRate)
-            ##########
      
-            # creates a map type for the solver to use
-            # the alphas are the ppfs corresponding to 99 or whatever (the risk level)
             Map_i = DT.MapType(EstimatedTimeMap, EstimatedEnergyMap, EstimatedTimeMapCov, EstimatedEnergyMapCov, CarsInDepots, EstimatedMap.EnergyAlpha, EstimatedMap.TimeAlpha, NodesPosition=NodesPosition)
             Map_i.CS = CS
 
@@ -126,7 +120,6 @@ class GlobalLayer:
             BestPlan.NodesTrajectory = NodesGroups[i][BestPlan.NodesTrajectory].reshape((-1,))
             BestPlan.CS.Nodes = NodesGroups[i][BestPlan.CS.Nodes].reshape((-1,))
             
-            # Also add the Time / SOCs at arrival!
             TourTime = np.zeros((len(BestPlan.NodesTrajectory)))
             TourTimeUncertaintyCov = np.zeros((len(BestPlan.NodesTrajectory)))
             TourEnergy = np.zeros((len(BestPlan.NodesTrajectory)))
@@ -135,12 +128,11 @@ class GlobalLayer:
             for j in range(len(BestPlan.NodesTrajectory)-1):
                 j1 = BestPlan.NodesTrajectory[j]
                 j2 = BestPlan.NodesTrajectory[j+1]
-                TourTime[j+1] += TourTime[j] + EstimatedTimeMap1[j1,j2] # the time at which we hit the node. need to fix these indices.
+                TourTime[j+1] += TourTime[j] + EstimatedTimeMap1[j1,j2]
                 TourTimeUncertaintyCov[j+1] = TourTimeUncertaintyCov[j] + EstimatedTimeMapCov1[j1,j2]
                 TourEnergy[j+1] += TourEnergy[j] + EstimatedEnergyMap1[j1,j2]
                 TourEnergyUncertaintyCov[j+1] = TourEnergyUncertaintyCov[j] + EstimatedEnergyMapCov1[j1,j2]
                 
-                # top will be what you arrived at! 
                 if j2 in EstimatedMap.CS.Nodes: # is the node we are going to in the list of chargers? 
                     i_CS = np.argwhere(BestPlan.CS.Nodes == j2).tolist()[0][0]
                     TourTime[j+2] += BestPlan.CS.ChargingTime[i_CS]

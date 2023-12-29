@@ -10,7 +10,35 @@ import copy
 
 os.system('cls' if os.name == 'nt' else 'clear')
 
+################## Overview of what is running ########
+# 1. Global layer is initialized with a mean/variance estimate of Time and SOC costs for each node segment. The mean/variance are estimated from a CloudMap of (T, SOC) cost points.
+# 2. Global layer calculates a plan for each vehicle. A plan consists of a sequence of nodes the vehicle must visit, along with expectations for a) at what time the vehicle should
+#       reach the node and b) how much charge the vehicle should have left when it reaches the node. The plan also contains information about when the vehicle must charge.  
+# 3. Given instructions for a) what node to travel to next, b) how quickly to get there, and c) the minimum charge left at arrival, the vehicle's Decision Manager (DM) calculates a reference 
+#       trajectory to the goal node that satisfies the time and SOC requirements. This is calculated via batch formulation, and is calculated ONCE whenever the vehicle reaches
+#       a new node. The reference trajectory is stored. 
+# 4. The vehicle (unicycle model) updates its control input at a frequency of 10 Hz. The control input at any time point is calculated using LMPC, with the DM's batch reference trajectory as the 
+#       the safe set. The cost function is a minimum time formulation. The LMPC is allowed to outperform the SOC dynamics given by the DM's batch reference trajectory. This results 
+#       in a low-level controller that satisfies (and may improve upon) the time and soc constraints set forth by the Global layer.
+# 5. Once the vehicle has traveled 70% of the distance between two nodes, a forward reachability analysis is undertaken by the DM Module. The Global Layer dictates a (T, SOC) in which the 
+#       vehicle must reach the next node. The reachability analysis calculates an estimate of what other (T, SOC) costs the vehicle could have incurred on the current node segment. This is 
+#       calculated using forward reachable sets and seeing in how many time steps / with how much remaining SOC we could have reached the goal node from the current position. The results
+#       of the reachability analysis are stored in the vector ReachSetInfo, which lists [start_node, end_node, [array of possible (time_cost, soc_cost)]]. 
+#       The reachability results are not currently used, but are available for the Global Layer to incorporate in the next day's planning. Note we can change the 70% to be whatever value we want, 
+#       based on how much we want to explore. 
+#######################################################
 
+################## Current Assumptions ################
+# 1. Vehicle model is known exactly   
+# 2. No variability in the SOC / Time costs for different road segments -> exact reproducibility
+# 3. No exogenous disturbances (e.g. temperature variations, etc)
+# These assumptions will be relaxed in upcoming iterations of the work
+#######################################################
+
+################## TO DO ##############################
+# 1. Update Global Layer calculation to allow for multiple vehicles / incomplete jobs 
+# 2. Update Global Layer calculations to use the exploration data
+#######################################################
 
 def main():
     print("Simulation Started!")
@@ -19,8 +47,7 @@ def main():
     Day = 0
     
     # Initialize the simulation:
-    N = 25 # Number of nodes
-    N = 8
+    N = 15 # Number of nodes
     CarsInDepots = [0,1] # Car in their depots. Len(array) is numCars, and each entry says which depot we are in
     NumberOfCars = len(CarsInDepots)
     NumberOfDepots = np.unique(CarsInDepots).size
@@ -48,7 +75,7 @@ def main():
     Layer0UpdateRate = 5.0
     VehiclePlannerUpdateRate = 0.1
     
-    InitialModelEstimate = [0.04, 0.06]
+    InitialModelEstimate = [0.04, 0.06] # not used at the moment
     
     SimDataCollection = []
     
@@ -61,8 +88,6 @@ def main():
     
     # -------------------------------------------------------------------------------------------------------------------
     
-    # PREPARING THE FIRST MAP FOR THE FIRST DAY
-    # These lines are only here so that we don't have to change the data type for estimated map right now. they are not used for planning. 
     MaxBiasTimeMapInit, MaxBiasCovTimeMapInit = 0.0, 0.0
     EstimatedTimeMap = PhysicalMap.MapTime + (2.0*np.random.rand(N,N)-1.0)*MaxBiasTimeMapInit # Exactly the same so far
     EstimatedTimeMapCov = PhysicalMap.MapTimeCov + (2.0*np.random.rand(N,N)-1.0)*MaxBiasCovTimeMapInit
@@ -72,24 +97,17 @@ def main():
     EstimatedMap = DT.MapType(EstimatedTimeMap, EstimatedEnergyMap, EstimatedTimeMapCov, EstimatedEnergyMapCov, CarsInDepots, PhysicalMap.EnergyAlpha, PhysicalMap.TimeAlpha, NodesPosition=PhysicalMap.NodesPosition)
     EstimatedMap.CS = PhysicalMap.CS # We know exactly which ones the charger ndoes are
     
-    ############## CREATE INITIAL CLOUDMAP DATASET FOR HIGH-LEVEL PLANNER HERE
+    ############## Initial Cloudmap for High-Level Planner
     CloudMap = np.zeros((N, N, 1000, 3))
-    # Use PhysicalMap.MapTime, PhysicalMap.MapEnergy
-    # Initialize with 10 samples? The samples will be deviations from MapTime, etc.
     for i in range(N):
         for j in range(N):
-            # create 50 things
             energies = np.random.normal(EstimatedEnergyMap[i,j], 0.1*EstimatedEnergyMapCov[i,j], 10)
             times = np.random.normal(EstimatedTimeMap[i,j], 0.1*EstimatedTimeMapCov[i,j], 10)
             CloudMap[i,j,:10,0] = times
             CloudMap[i,j,:10,1] = energies
-    # check signs
     if np.any(CloudMap[:,:,:,0] < 0) or np.any(CloudMap[:,:,:,1] > 0):
         print('problem creating cloud map')
         return
-    
-    
-    
     
     
     while Day < MaxDays:
@@ -104,9 +122,7 @@ def main():
                 SimData.Vehicle[i].DM.Model = InitialModelEstimate # initial estimate of the vehicle's battery parameters
                 SimData.Vehicle[i].SA.Model = InitialModelEstimate # initial estimate of the vehicle's battery parameters
         if Day > 0:
-            # 1. deep copy Layer 0
             SimData.Layer0 = copy.deepcopy(SimDataCollection[Day-1].Layer0)
-            # 2. Update the cloud map with old SA's estimates
             for i in range(SimData.NVehicles):
                 SimData.Vehicle[i] = copy.deepcopy(SimDataCollection[Day-1].Vehicle[i]) # this should keep all the previous experience right?
                 SimData.Vehicle[i].ReturnedToDepot = False # have to set this!!! otherwise it thinks we're already done with the task
@@ -129,7 +145,6 @@ def main():
             SimData.Vehicle[i].DM.EstimatedState = copy.deepcopy(SimData.Vehicle[i].State)
             SimData.Vehicle[i].SA.EstimatedState = copy.deepcopy(SimData.Vehicle[i].State)
             
-        
         # Run the simulation for the day
         PlotData = SDT.SavePlotData(SimData)
         while (SimData.Time <= MaxTime):
@@ -175,7 +190,7 @@ def main():
                         
             # Check if the simulation is over:
             if SimData.NumberOfCompletedTours == SimData.NVehicles:
-                for i in range(SimData.NVehicles): # here we see if the plan changes
+                for i in range(SimData.NVehicles): 
                     #SimData.Vehicle[i].updateModel()
                     TimeCost, EnergyCost = SimData.Vehicle[i].ConsolidateRouteInfo()
                     SimData.Layer0.AddPointsToCloudMap(TimeCost, EnergyCost)
@@ -185,15 +200,13 @@ def main():
         if iplot > 0:
             PlotData.PlotGraphs(InitPlan, SimData)
             PlotData.PlotUnicycleGraphs(InitPlan, SimData)
-
         
-        # Save the day's data here
+        # Save the day's data 
         SimDataCollection.append(copy.deepcopy(SimData))
         
         Day += 1
         
-    # Plotting!! 
-    # Plot one: the routes the vehicles took
+    # Plots
     plt.figure()
     for i in range(len(SimDataCollection)):
         Map = SimDataCollection[i].Map
@@ -213,9 +226,6 @@ def main():
             plt.scatter(Map.NodesPosition[Map.Depots,0], Map.NodesPosition[Map.Depots,1], c='k', s=15)
     plt.grid()
     
-    # Plot two: time to complete each route per vehicle
-    # potential problem: are we not doing the vehicle stuff correctly anymore? 
-    # are we not re-setting the trajectory when we create new vehicles? 
     plt.figure()
     leg_str = list()
     for i in range(len(SimDataCollection)):
@@ -229,8 +239,6 @@ def main():
     plt.xlabel('Day')
     plt.ylabel('Total Route Duration [s]')
     
-    # Plot three: vehicles' SOC as a function of time
-    # One plot, two vehicles, "Day" lines.
     plt.figure()
     leg_str = list()
     for i in range(len(SimDataCollection)):
